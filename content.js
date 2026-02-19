@@ -1,7 +1,8 @@
 (function () {
   "use strict";
 
-  const STEP_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+  const STEP_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5, 6];
+  const HIGH_SPEEDS  = [4, 5, 6];
   const PRESET_SPEEDS = [0.5, 1, 1.25, 1.5, 2, 3];
   let currentSpeed = 1;
   const controllers = new Map(); // video -> controller element
@@ -118,6 +119,74 @@
       padding: 2px 5px;
       line-height: 1.5;
     }
+    .__vsc-more-wrap { position: relative; }
+    .__vsc-more {
+      all: unset;
+      font-size: 11px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.55);
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 5px;
+      padding: 3px 7px;
+      cursor: pointer;
+      line-height: 1.4;
+      transition: all 0.12s;
+    }
+    .__vsc-more:hover { background: rgba(255,255,255,0.14); color: #fff; border-color: rgba(255,255,255,0.18); }
+    .__vsc-more.__vsc-open { background: rgba(255,255,255,0.12); color: #fff; border-color: rgba(255,255,255,0.2); }
+    .__vsc-more.__vsc-hi { background: linear-gradient(135deg, #3b82f6, #6366f1); border-color: transparent; color: #fff; }
+    .__vsc-drop {
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 0;
+      background: rgba(8, 8, 14, 0.94);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      padding: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(4px);
+      transition: opacity 0.15s, transform 0.15s;
+      min-width: 70px;
+    }
+    .__vsc-drop.__vsc-open { opacity: 1; pointer-events: auto; transform: translateY(0); }
+    .__vsc-di {
+      all: unset;
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.65);
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.12s;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .__vsc-di:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .__vsc-di.__vsc-active { background: linear-gradient(135deg, #3b82f6, #6366f1); color: #fff; }
+    .__vsc-close {
+      all: unset;
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      line-height: 1;
+      color: rgba(255,255,255,0.3);
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.12s;
+      flex-shrink: 0;
+    }
+    .__vsc-close:hover { background: rgba(220,50,50,0.2); color: rgba(255,100,100,0.9); }
   `;
 
   function injectCSS() {
@@ -145,37 +214,95 @@
   }
 
   function syncControllers() {
+    const isHigh = HIGH_SPEEDS.some(s => Math.abs(s - currentSpeed) < 0.01);
     controllers.forEach(ctrl => {
       ctrl.querySelector(".__vsc-spd").textContent = currentSpeed + "\u00d7";
       ctrl.querySelectorAll(".__vsc-p").forEach(b =>
         b.classList.toggle("__vsc-active", Math.abs(parseFloat(b.dataset.s) - currentSpeed) < 0.01)
       );
+      ctrl.querySelectorAll(".__vsc-di").forEach(b =>
+        b.classList.toggle("__vsc-active", Math.abs(parseFloat(b.dataset.s) - currentSpeed) < 0.01)
+      );
+      const more = ctrl.querySelector(".__vsc-more");
+      if (more) {
+        const isOpen = more.classList.contains("__vsc-open");
+        more.textContent = isHigh ? currentSpeed + "\u00d7" : ("more " + (isOpen ? "\u25b4" : "\u25be"));
+        more.classList.toggle("__vsc-hi", isHigh);
+      }
     });
   }
 
+  function closeAllDropdowns() {
+    document.querySelectorAll(".__vsc-drop.__vsc-open").forEach(d => d.classList.remove("__vsc-open"));
+    document.querySelectorAll(".__vsc-more.__vsc-open").forEach(b => b.classList.remove("__vsc-open"));
+  }
+
   function makeController() {
+    const isHigh = HIGH_SPEEDS.some(s => Math.abs(s - currentSpeed) < 0.01);
     const el = document.createElement("div");
     el.className = "__vsc";
-    el.innerHTML = `<div class="__vsc-bar">
-      <div class="__vsc-grip"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-      <div class="__vsc-presets">
-        ${PRESET_SPEEDS.map(s =>
-          `<button class="__vsc-p${Math.abs(s - currentSpeed) < 0.01 ? " __vsc-active" : ""}" data-s="${s}">${s}\u00d7</button>`
-        ).join("")}
-      </div>
-      <div class="__vsc-div"></div>
-      <div class="__vsc-ctrl">
-        <button class="__vsc-b" data-action="dec">\u2212</button>
-        <span class="__vsc-spd">${currentSpeed}\u00d7</span>
-        <button class="__vsc-b" data-action="inc">+</button>
-      </div>
-    </div>`;
+    el.innerHTML = `
+      <div class="__vsc-bar">
+        <div class="__vsc-grip"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="__vsc-presets">
+          ${PRESET_SPEEDS.map(s =>
+            `<button class="__vsc-p${Math.abs(s - currentSpeed) < 0.01 ? " __vsc-active" : ""}" data-s="${s}">${s}\u00d7</button>`
+          ).join("")}
+          <div class="__vsc-more-wrap">
+            <div class="__vsc-drop">
+              ${[...HIGH_SPEEDS].reverse().map(s =>
+                `<button class="__vsc-di${Math.abs(s - currentSpeed) < 0.01 ? " __vsc-active" : ""}" data-s="${s}">${s}\u00d7</button>`
+              ).join("")}
+            </div>
+            <button class="__vsc-more${isHigh ? " __vsc-hi" : ""}">${isHigh ? currentSpeed + "\u00d7" : "more \u25be"}</button>
+          </div>
+        </div>
+        <div class="__vsc-div"></div>
+        <div class="__vsc-ctrl">
+          <button class="__vsc-b" data-action="dec">\u2212</button>
+          <span class="__vsc-spd">${currentSpeed}\u00d7</span>
+          <button class="__vsc-b" data-action="inc">+</button>
+        </div>
+        <div class="__vsc-div"></div>
+        <button class="__vsc-close" title="Hide controller">\u00d7</button>
+      </div>`;
 
     el.querySelector('[data-action="dec"]').addEventListener("click", e => { e.stopPropagation(); stepSpeed(-1); });
     el.querySelector('[data-action="inc"]').addEventListener("click", e => { e.stopPropagation(); stepSpeed(1); });
+
     el.querySelectorAll(".__vsc-p").forEach(b =>
       b.addEventListener("click", e => { e.stopPropagation(); applySpeed(parseFloat(b.dataset.s)); })
     );
+
+    const drop    = el.querySelector(".__vsc-drop");
+    const moreBtn = el.querySelector(".__vsc-more");
+
+    moreBtn.addEventListener("click", e => {
+      e.stopPropagation();
+      const isOpen = drop.classList.contains("__vsc-open");
+      closeAllDropdowns();
+      if (!isOpen) {
+        drop.classList.add("__vsc-open");
+        moreBtn.classList.add("__vsc-open");
+      }
+    });
+
+    el.querySelectorAll(".__vsc-di").forEach(b =>
+      b.addEventListener("click", e => {
+        e.stopPropagation();
+        applySpeed(parseFloat(b.dataset.s));
+        closeAllDropdowns();
+      })
+    );
+
+    // Close button — hides until the cursor leaves the video area and returns
+    el.querySelector(".__vsc-close").addEventListener("click", e => {
+      e.stopPropagation();
+      closeAllDropdowns();
+      el._suppressed = true;
+      el.classList.remove("__vsc-show");
+    });
+
     return el;
   }
 
@@ -283,6 +410,10 @@
           if (inFullscreen) {
             // In fullscreen the video rect = entire screen, so the cursor is
             // always "over" it — use an inactivity timer instead.
+            if (ctrl._suppressed) {
+              // clear suppression after first mousemove in fullscreen
+              ctrl._suppressed = false;
+            }
             clearTimeout(ctrl._hideTimer);
             ctrl.classList.add("__vsc-show");
             ctrl._hideTimer = setTimeout(() => {
@@ -292,6 +423,11 @@
             const r = video.getBoundingClientRect();
             const overVideo = e.clientX >= r.left && e.clientX <= r.right &&
                               e.clientY >= r.top  && e.clientY <= r.bottom;
+            if (ctrl._suppressed) {
+              // clear suppression once cursor leaves the video area
+              if (!overVideo) ctrl._suppressed = false;
+              return;
+            }
             if (overVideo || ctrl.matches(":hover")) {
               clearTimeout(ctrl._hideTimer);
               place(ctrl, video);
@@ -311,6 +447,9 @@
     document.addEventListener("mouseleave", () => {
       controllers.forEach(ctrl => ctrl.classList.remove("__vsc-show"));
     });
+
+    // Close dropdown when clicking anywhere outside it
+    document.addEventListener("click", () => closeAllDropdowns());
 
     // Hide controllers immediately when entering fullscreen; they will
     // reappear as soon as the user moves the mouse.
