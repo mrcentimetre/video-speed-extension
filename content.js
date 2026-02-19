@@ -276,20 +276,32 @@
       rafPending = true;
       requestAnimationFrame(() => {
         rafPending = false;
+        const inFullscreen = !!document.fullscreenElement;
         controllers.forEach((ctrl, video) => {
           if (ctrl._dragging) return; // keep visible while dragging
-          const r = video.getBoundingClientRect();
-          const overVideo = e.clientX >= r.left && e.clientX <= r.right &&
-                            e.clientY >= r.top  && e.clientY <= r.bottom;
-          if (overVideo || ctrl.matches(":hover")) {
+
+          if (inFullscreen) {
+            // In fullscreen the video rect = entire screen, so the cursor is
+            // always "over" it — use an inactivity timer instead.
             clearTimeout(ctrl._hideTimer);
-            place(ctrl, video);
             ctrl.classList.add("__vsc-show");
-          } else {
-            clearTimeout(ctrl._hideTimer);
             ctrl._hideTimer = setTimeout(() => {
               if (!ctrl.matches(":hover")) ctrl.classList.remove("__vsc-show");
-            }, 600);
+            }, 2500);
+          } else {
+            const r = video.getBoundingClientRect();
+            const overVideo = e.clientX >= r.left && e.clientX <= r.right &&
+                              e.clientY >= r.top  && e.clientY <= r.bottom;
+            if (overVideo || ctrl.matches(":hover")) {
+              clearTimeout(ctrl._hideTimer);
+              place(ctrl, video);
+              ctrl.classList.add("__vsc-show");
+            } else {
+              clearTimeout(ctrl._hideTimer);
+              ctrl._hideTimer = setTimeout(() => {
+                if (!ctrl.matches(":hover")) ctrl.classList.remove("__vsc-show");
+              }, 600);
+            }
           }
         });
       });
@@ -298,6 +310,17 @@
     // Hide all controllers when cursor leaves the page
     document.addEventListener("mouseleave", () => {
       controllers.forEach(ctrl => ctrl.classList.remove("__vsc-show"));
+    });
+
+    // Hide controllers immediately when entering fullscreen; they will
+    // reappear as soon as the user moves the mouse.
+    document.addEventListener("fullscreenchange", () => {
+      if (document.fullscreenElement) {
+        controllers.forEach(ctrl => {
+          clearTimeout(ctrl._hideTimer);
+          ctrl.classList.remove("__vsc-show");
+        });
+      }
     });
 
     chrome.runtime.onMessage.addListener(msg => {
