@@ -1,22 +1,249 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>Video Speed Controller</title>
-    <style>
-        body { font-family: Arial, sans-serif; padding: 10px; width: 200px; }
-        select { width: 100%; padding: 5px; font-size: 16px; }
-    </style>
+  <meta charset="UTF-8">
+  <title>Speed Controller</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d0d11;
+      color: #fff;
+      width: 300px;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .container {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+    .header-icon {
+      width: 30px;
+      height: 30px;
+      background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 2px 12px rgba(99,102,241,0.4);
+    }
+    .header-icon svg { width: 16px; height: 16px; fill: #fff; }
+    .header-title {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      flex: 1;
+    }
+    .header-badge {
+      font-size: 10px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.35);
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 4px;
+      padding: 2px 6px;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── Speed card ── */
+    .speed-card {
+      background: #141419;
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 12px;
+      padding: 14px 16px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .speed-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 0%, rgba(79,126,248,0.1), transparent 65%);
+      pointer-events: none;
+    }
+    .speed-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.35);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+    .speed-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 3px;
+    }
+    .speed-num {
+      font-size: 44px;
+      font-weight: 800;
+      letter-spacing: -2px;
+      line-height: 1;
+      background: linear-gradient(160deg, #ffffff 30%, rgba(255,255,255,0.55) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      transition: all 0.2s ease;
+    }
+    .speed-num.accent {
+      background: linear-gradient(135deg, #60a5fa, #a78bfa);
+      -webkit-background-clip: text;
+      background-clip: text;
+    }
+    .speed-x {
+      font-size: 20px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.3);
+      margin-bottom: 2px;
+    }
+
+    /* ── Section ── */
+    .section-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.3);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 7px;
+    }
+
+    /* ── Presets ── */
+    .presets-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 5px;
+    }
+    .preset-btn {
+      all: unset;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.55);
+      background: #141419;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 9px 4px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .preset-btn:hover {
+      background: #1c1c24;
+      color: #fff;
+      border-color: rgba(255,255,255,0.15);
+    }
+    .preset-btn.active {
+      background: linear-gradient(135deg, rgba(59,130,246,0.25), rgba(99,102,241,0.25));
+      border-color: rgba(99,102,241,0.45);
+      color: #c4b5fd;
+    }
+
+    /* ── Fine controls ── */
+    .fine-row {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 6px;
+    }
+    .step-btn {
+      all: unset;
+      text-align: center;
+      font-size: 22px;
+      font-weight: 300;
+      color: rgba(255,255,255,0.65);
+      background: #141419;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 7px;
+      cursor: pointer;
+      transition: all 0.15s;
+      line-height: 1;
+    }
+    .step-btn:hover {
+      background: #1c1c24;
+      color: #fff;
+      border-color: rgba(255,255,255,0.14);
+    }
+    .step-btn:active { transform: scale(0.95); }
+    .reset-btn {
+      all: unset;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.4);
+      background: #141419;
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 8px;
+      padding: 8px 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .reset-btn:hover {
+      background: #1c1c24;
+      color: rgba(255,255,255,0.75);
+      border-color: rgba(255,255,255,0.13);
+    }
+
+    /* ── Footer hint ── */
+    .hint {
+      text-align: center;
+      font-size: 10px;
+      color: rgba(255,255,255,0.2);
+      padding-bottom: 2px;
+    }
+  </style>
 </head>
 <body>
-    <h3>Set Video Speed</h3>
-    <select id="speedSelector">
-        <option value="0.5">0.5x</option>
-        <option value="1" selected>1x</option>
-        <option value="1.5">1.5x</option>
-        <option value="2">2x</option>
-        <option value="2.5">2.5x</option>
-        <option value="3">3x</option>
-    </select>
-    <script src="popup.js"></script>
+  <div class="container">
+
+    <div class="header">
+      <div class="header-icon">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+      </div>
+      <span class="header-title">Speed Controller</span>
+      <span class="header-badge">v2.0</span>
+    </div>
+
+    <div class="speed-card">
+      <div class="speed-label">Current Speed</div>
+      <div class="speed-row">
+        <span class="speed-num" id="speedDisplay">1.0</span>
+        <span class="speed-x">&times;</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Presets</div>
+      <div class="presets-grid" id="presetsGrid"></div>
+    </div>
+
+    <div>
+      <div class="section-label">Fine Adjust</div>
+      <div class="fine-row">
+        <button class="step-btn" id="decBtn">&minus;</button>
+        <button class="reset-btn" id="resetBtn">Reset&nbsp;1&times;</button>
+        <button class="step-btn" id="incBtn">+</button>
+      </div>
+    </div>
+
+    <p class="hint">Hover over any video to see the inline controller</p>
+
+  </div>
+  <script src="popup.js"></script>
 </body>
 </html>

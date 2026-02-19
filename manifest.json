@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Video Speed Controller",
-    "version": "1.0",
+    "version": "2.0",
     "description": "Change video playback speed globally",
     "permissions": ["storage"],
     "host_permissions": ["<all_urls>"],
