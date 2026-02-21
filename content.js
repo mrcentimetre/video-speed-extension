@@ -5,6 +5,8 @@
   const HIGH_SPEEDS  = [4, 5, 6];
   const PRESET_SPEEDS = [0.5, 1, 1.25, 1.5, 2, 3];
   let currentSpeed = 1;
+  let extensionDisabled = false;
+  let initialized = false;
   const controllers = new Map(); // video -> controller element
 
   const CSS = `
@@ -356,7 +358,13 @@
     });
   }
 
+  function removeAllControllers() {
+    controllers.forEach(ctrl => ctrl.remove());
+    controllers.clear();
+  }
+
   function attach(video) {
+    if (extensionDisabled) return;
     if (controllers.has(video)) return;
     const ctrl = makeController();
     document.documentElement.appendChild(ctrl);
@@ -369,6 +377,10 @@
   }
 
   function scan() {
+    if (extensionDisabled) {
+      removeAllControllers();
+      return;
+    }
     document.querySelectorAll("video").forEach(attach);
     controllers.forEach((ctrl, video) => {
       if (!video.isConnected) { ctrl.remove(); controllers.delete(video); }
@@ -381,90 +393,114 @@
 
   function init() {
     injectCSS();
-    chrome.storage.sync.get(["videoSpeed"], d => {
+    chrome.storage.sync.get(["videoSpeed", "globallyDisabled", "disabledSites"], d => {
+      const hostname = location.hostname;
+      const siteDisabled = (d.disabledSites || []).includes(hostname);
+      extensionDisabled = !!(d.globallyDisabled || siteDisabled);
+
+      if (extensionDisabled) {
+        // Remove any controllers that were attached during the async gap
+        // (MutationObserver can fire before this callback resolves)
+        removeAllControllers();
+        return;
+      }
+
       if (d.videoSpeed) {
         currentSpeed = parseFloat(d.videoSpeed);
         document.querySelectorAll("video").forEach(v => (v.playbackRate = currentSpeed));
-        syncControllers(); // fix already-built controllers that used the default speed
+        syncControllers();
       }
       scan();
     });
 
-    new MutationObserver(scan).observe(document, { childList: true, subtree: true });
-    window.addEventListener("scroll", reposition, { passive: true });
-    window.addEventListener("resize", reposition, { passive: true });
-    setInterval(reposition, 400);
+    if (!initialized) {
+      initialized = true;
+      new MutationObserver(scan).observe(document, { childList: true, subtree: true });
+      window.addEventListener("scroll", reposition, { passive: true });
+      window.addEventListener("resize", reposition, { passive: true });
+      setInterval(reposition, 400);
 
-    // Global hover detection — works even when an overlay covers the <video>
-    // (YouTube, Twitch, etc. all do this). Throttled via rAF to ~60fps.
-    let rafPending = false;
-    document.addEventListener("mousemove", e => {
-      if (rafPending) return;
-      rafPending = true;
-      requestAnimationFrame(() => {
-        rafPending = false;
-        const inFullscreen = !!document.fullscreenElement;
-        controllers.forEach((ctrl, video) => {
-          if (ctrl._dragging) return; // keep visible while dragging
+      // Global hover detection — works even when an overlay covers the <video>
+      // (YouTube, Twitch, etc. all do this). Throttled via rAF to ~60fps.
+      let rafPending = false;
+      document.addEventListener("mousemove", e => {
+        if (rafPending) return;
+        rafPending = true;
+        requestAnimationFrame(() => {
+          rafPending = false;
+          if (extensionDisabled) return;
+          const inFullscreen = !!document.fullscreenElement;
+          controllers.forEach((ctrl, video) => {
+            if (ctrl._dragging) return; // keep visible while dragging
 
-          if (inFullscreen) {
-            // In fullscreen the video rect = entire screen, so the cursor is
-            // always "over" it — use an inactivity timer instead.
-            if (ctrl._suppressed) {
-              // clear suppression after first mousemove in fullscreen
-              ctrl._suppressed = false;
-            }
-            clearTimeout(ctrl._hideTimer);
-            ctrl.classList.add("__vsc-show");
-            ctrl._hideTimer = setTimeout(() => {
-              if (!ctrl.matches(":hover")) ctrl.classList.remove("__vsc-show");
-            }, 2500);
-          } else {
-            const r = video.getBoundingClientRect();
-            const overVideo = e.clientX >= r.left && e.clientX <= r.right &&
-                              e.clientY >= r.top  && e.clientY <= r.bottom;
-            if (ctrl._suppressed) {
-              // clear suppression once cursor leaves the video area
-              if (!overVideo) ctrl._suppressed = false;
-              return;
-            }
-            if (overVideo || ctrl.matches(":hover")) {
+            if (inFullscreen) {
+              // In fullscreen the video rect = entire screen, so the cursor is
+              // always "over" it — use an inactivity timer instead.
+              if (ctrl._suppressed) {
+                // clear suppression after first mousemove in fullscreen
+                ctrl._suppressed = false;
+              }
               clearTimeout(ctrl._hideTimer);
-              place(ctrl, video);
               ctrl.classList.add("__vsc-show");
-            } else {
-              clearTimeout(ctrl._hideTimer);
               ctrl._hideTimer = setTimeout(() => {
                 if (!ctrl.matches(":hover")) ctrl.classList.remove("__vsc-show");
-              }, 600);
+              }, 2500);
+            } else {
+              const r = video.getBoundingClientRect();
+              const overVideo = e.clientX >= r.left && e.clientX <= r.right &&
+                                e.clientY >= r.top  && e.clientY <= r.bottom;
+              if (ctrl._suppressed) {
+                // clear suppression once cursor leaves the video area
+                if (!overVideo) ctrl._suppressed = false;
+                return;
+              }
+              if (overVideo || ctrl.matches(":hover")) {
+                clearTimeout(ctrl._hideTimer);
+                place(ctrl, video);
+                ctrl.classList.add("__vsc-show");
+              } else {
+                clearTimeout(ctrl._hideTimer);
+                ctrl._hideTimer = setTimeout(() => {
+                  if (!ctrl.matches(":hover")) ctrl.classList.remove("__vsc-show");
+                }, 600);
+              }
             }
-          }
+          });
         });
+      }, { passive: true });
+
+      // Hide all controllers when cursor leaves the page
+      document.addEventListener("mouseleave", () => {
+        controllers.forEach(ctrl => ctrl.classList.remove("__vsc-show"));
       });
-    }, { passive: true });
 
-    // Hide all controllers when cursor leaves the page
-    document.addEventListener("mouseleave", () => {
-      controllers.forEach(ctrl => ctrl.classList.remove("__vsc-show"));
-    });
+      // Close dropdown when clicking anywhere outside it
+      document.addEventListener("click", () => closeAllDropdowns());
 
-    // Close dropdown when clicking anywhere outside it
-    document.addEventListener("click", () => closeAllDropdowns());
+      // Hide controllers immediately when entering fullscreen; they will
+      // reappear as soon as the user moves the mouse.
+      document.addEventListener("fullscreenchange", () => {
+        if (document.fullscreenElement) {
+          controllers.forEach(ctrl => {
+            clearTimeout(ctrl._hideTimer);
+            ctrl.classList.remove("__vsc-show");
+          });
+        }
+      });
 
-    // Hide controllers immediately when entering fullscreen; they will
-    // reappear as soon as the user moves the mouse.
-    document.addEventListener("fullscreenchange", () => {
-      if (document.fullscreenElement) {
-        controllers.forEach(ctrl => {
-          clearTimeout(ctrl._hideTimer);
-          ctrl.classList.remove("__vsc-show");
-        });
-      }
-    });
-
-    chrome.runtime.onMessage.addListener(msg => {
-      if (msg.action === "changeSpeed") applySpeed(parseFloat(msg.speed), false);
-    });
+      chrome.runtime.onMessage.addListener(msg => {
+        if (msg.action === "changeSpeed") {
+          applySpeed(parseFloat(msg.speed), false);
+        } else if (msg.action === "setDisabled") {
+          extensionDisabled = !!msg.disabled;
+          if (extensionDisabled) {
+            removeAllControllers();
+          } else {
+            scan();
+          }
+        }
+      });
+    }
   }
 
   document.readyState === "loading"
